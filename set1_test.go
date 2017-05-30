@@ -143,3 +143,28 @@ func Test_Challenge4_DetectSingleCharacterXOR(t *testing.T) {
 	}
 	fmt.Printf("byte cipher = %v ; msg = %s\n", res.byteCipher, res.msg)
 }
+
+func Test_challenge5_ImplementRepeatingKeyXOR(t *testing.T) {
+	challenges := struct {
+		input, expectedHexEncoded []byte
+	}{
+		input: []byte(`Burning 'em, if you ain't quick and nimble
+I go crazy when I hear a cymbal`),
+		expectedHexEncoded: []byte(`0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f`),
+	}
+	key := []byte("ICE")
+	expected := make([]byte, hex.DecodedLen(len(challenges.expectedHexEncoded)))
+	_, err := hex.Decode(expected, challenges.expectedHexEncoded)
+	if err != nil {
+		t.Fatalf("could not decode, %v", err)
+	}
+
+	dst := make([]byte, len(challenges.input))
+	repeatingKeyXOR(dst, challenges.input, key)
+	fmt.Printf("got =\n  %s\n", dst)
+	fmt.Printf("expected =\n  %s\n", expected)
+	if bytes.Compare(dst, expected) != 0 {
+		t.Fatalf("got =\n  %s\nexpected =\n  %s\n", dst, expected)
+	}
+
+}

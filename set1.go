@@ -78,6 +78,13 @@ func scoreEnglishText(s string) float32 {
 	return score
 }
 
+func repeatingKeyXOR(dst, msg, key []byte) {
+	for i, b := range msg {
+		j := i % len(key)
+		dst[i] = b ^ key[j]
+	}
+}
+
 func main() {
 	fmt.Println("vim-go")
 }
