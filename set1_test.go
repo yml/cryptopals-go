@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"testing"
 )
 
@@ -41,36 +43,28 @@ func Test_Chalenge2_FixedXOR(t *testing.T) {
 
 	// Hex decode input1
 	input1 := make([]byte, hex.DecodedLen(len(challenge.input1HexEncoded)))
-	n1, err := hex.Decode(input1, challenge.input1HexEncoded)
+	_, err := hex.Decode(input1, challenge.input1HexEncoded)
 	if err != nil {
 		t.Fatalf("could not hex.decode, %s (%v)", challenge.input1HexEncoded, err)
 	}
-	fmt.Println("input1 = ", input1)
 
 	// Hex decode input2
 	input2 := make([]byte, hex.DecodedLen(len(challenge.input2HexEncoded)))
-	n2, err := hex.Decode(input2, challenge.input2HexEncoded)
+	_, err = hex.Decode(input2, challenge.input2HexEncoded)
 	if err != nil {
 		t.Fatalf("could not hex.decode, %s (%v)", challenge.input2HexEncoded, err)
 	}
 
-	fmt.Println("input2 = ", input2)
-
 	// XOR input1 and input2
 	dst := make([]byte, len(input2))
-	n := XORBytes(dst, input1, input2)
-
-	fmt.Println("n1 = ", n1)
-	fmt.Println("n2 = ", n2)
-	fmt.Println("n = ", n)
+	_ = XORBytes(dst, input1, input2)
 
 	// Hex decode expected result
 	expected := make([]byte, hex.DecodedLen(len(challenge.expectedHexEncoded)))
-	nexpected, err := hex.Decode(expected, challenge.expectedHexEncoded)
+	_, err = hex.Decode(expected, challenge.expectedHexEncoded)
 	if err != nil {
 		t.Fatalf("could not hex.decode, %s (%v)", challenge.expectedHexEncoded, err)
 	}
-	fmt.Println("nexpected = ", nexpected)
 	fmt.Printf("expected\n  %b\n", expected)
 	fmt.Printf("dst\n  %b\n", dst)
 
@@ -111,8 +105,41 @@ func Test_Challenge3_SingleByteXORCipher(t *testing.T) {
 		}
 	}
 	fmt.Printf("byte cipher = %v ; msg = %s\n", result.byteCipher, result.msg)
-	// the solution is 88
-	if result.byteCipher != byte(88) {
-		t.Fatal("Error could not find the result")
+}
+
+func Test_Challenge4_DetectSingleCharacterXOR(t *testing.T) {
+	f, err := os.Open("data/challenge-data-4.txt")
+	if err != nil {
+		t.Fatal("Could not read the challenge data")
 	}
+	type result struct {
+		msg        string
+		byteCipher byte
+		score      float32
+	}
+
+	res := result{}
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		input := make([]byte, hex.DecodedLen(len(scanner.Bytes())))
+		_, err := hex.Decode(input, scanner.Bytes())
+		if err != nil {
+			t.Fatalf("could not decode, %s (%v)\n", scanner.Text(), err)
+		}
+		for i := 0; i < 255; i++ {
+			b := byte(i)
+			dst := make([]byte, len(input))
+			SingleByteXOR(dst, input, b)
+			msg := string(dst[:])
+			score := scoreEnglishText(msg)
+			if score > res.score {
+				res.score = score
+				res.msg = msg
+				res.byteCipher = b
+			}
+		}
+
+	}
+	fmt.Printf("byte cipher = %v ; msg = %s\n", res.byteCipher, res.msg)
 }
