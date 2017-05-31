@@ -3,10 +3,10 @@ package main
 import (
 	"bufio"
 	"bytes"
-	"encoding/base64"
+	"crypto/aes"
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
+	"math"
 	"os"
 	"testing"
 )
@@ -162,27 +162,20 @@ func Test_Challenge6_BreakRepeatingKeyXOR(t *testing.T) {
 	})
 	t.Run("Find key Size", func(t *testing.T) {
 		maxkeysize := 40
-		fileBytes, err := ioutil.ReadFile("data/challenge-data-6.txt")
+		EncryptedMsg, err := base64DecodeFile("data/challenge-data-6.txt")
 		if err != nil {
-			t.Fatal("Could not read the file", err)
-		}
-
-		msg := make([]byte, base64.StdEncoding.DecodedLen(len(fileBytes)))
-		n, err := base64.StdEncoding.Decode(msg, fileBytes)
-		if err != nil {
-			t.Fatal("Could not base64 decode", err)
+			t.Fatal("Could not read or base64 decode", err)
 		}
 
 		// find the keysize
-		fmt.Println(maxkeysize, n)
-		keySize, err := findKeySize(msg, maxkeysize, hammingDistance)
+		keySize, err := findKeySize(EncryptedMsg, maxkeysize, hammingDistance)
 		if err != nil {
 			t.Fatal("could not find the keysize", err)
 		}
 		fmt.Println("keysize =", keySize)
 
 		// guess the key
-		blocks := getTranposedBlocks(msg, keySize)
+		blocks := getTranposedBlocks(EncryptedMsg, keySize)
 		fmt.Println("len(blocks) =", len(blocks))
 		key := make([]byte, keySize)
 		for i := range blocks {
@@ -190,8 +183,68 @@ func Test_Challenge6_BreakRepeatingKeyXOR(t *testing.T) {
 			key[i] = byteCipher
 		}
 		fmt.Printf("key =\n%s\n", key)
-		decodedMsg := make([]byte, len(msg))
-		applyXORWithRepeatKey(decodedMsg, msg, key)
+		decodedMsg := make([]byte, len(EncryptedMsg))
+		applyXORWithRepeatKey(decodedMsg, EncryptedMsg, key)
 		fmt.Printf("decoded data =\n%s\n\n\n", decodedMsg)
 	})
+}
+
+func Test_Challenge7_BreakAESInECBMode(t *testing.T) {
+	key := []byte("YELLOW SUBMARINE")
+	encryptedMsg, err := base64DecodeFile("data/challenge-data-7.txt")
+	if err != nil {
+		t.Fatal("Could not read or base64 decode", err)
+	}
+	msg := make([]byte, len(encryptedMsg))
+	cipher, err := aes.NewCipher(key)
+	if err != nil {
+		t.Fatal("could not create the aes cipher")
+	}
+
+	// There is no ECB MODE implemented in the STD lib so doing it manually
+	fmt.Println("cipher.BlockSize() = ", cipher.BlockSize())
+	for i := 0; i < len(encryptedMsg); i += cipher.BlockSize() {
+		upTo := i + cipher.BlockSize()
+		if upTo > len(encryptedMsg) {
+			upTo = len(encryptedMsg)
+		}
+
+		cipher.Decrypt(msg[i:upTo], encryptedMsg[i:upTo])
+	}
+	fmt.Printf("key = %s\n", key)
+	fmt.Printf("Decoded mesage = \n%s\n\n", msg)
+
+}
+
+func Test_challenge8_DetectAESInECBMode(t *testing.T) {
+	f, err := os.Open("data/challenge-data-8.txt")
+	if err != nil {
+		t.Fatal("Could not read file", err)
+	}
+	defer f.Close()
+
+	guessedLine := 0
+	minAverage := float64(100000000)
+	l := 0
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		cipherText := make([]byte, hex.DecodedLen(len(scanner.Bytes())))
+		_, err := hex.Decode(cipherText, scanner.Bytes())
+		if err != nil {
+			t.Fatal("Could not hex decode the line", err)
+		}
+		blockSize := 16
+		numberOfBlocks := int(math.Ceil(float64(len(cipherText)) / float64(blockSize)))
+		blocks := getBlocks(cipherText, blockSize, numberOfBlocks)
+		if err != nil {
+			t.Fatal("Could not split the cipherText in blocks", err)
+		}
+		avg, err := averageDistanceBlocks(blocks, hammingDistance)
+		if avg < minAverage {
+			minAverage = avg
+			guessedLine = l
+		}
+		l++
+	}
+	fmt.Println("guessed line (0 based) = ", guessedLine)
 }

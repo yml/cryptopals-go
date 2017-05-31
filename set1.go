@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"math"
 )
 
@@ -111,6 +112,18 @@ func applyXORWithRepeatKey(dst, msg, key []byte) {
 			dst[i] = msg[i] ^ key[i%len(key)]
 		}
 	}
+}
+
+func base64DecodeFile(fname string) ([]byte, error) {
+	encryptedFileBytes, err := ioutil.ReadFile(fname)
+	if err != nil {
+		return nil, err
+	}
+
+	EncryptedMsg := make([]byte, base64.StdEncoding.DecodedLen(len(encryptedFileBytes)))
+	_, err = base64.StdEncoding.Decode(EncryptedMsg, encryptedFileBytes)
+	return EncryptedMsg, err
+
 }
 
 func hammingDistance(a, b []byte) (int, error) {
