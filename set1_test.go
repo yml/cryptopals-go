@@ -3,13 +3,15 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"testing"
 )
 
-func Test_Chalenge1_HextoBase64(t *testing.T) {
+func Test_challenge1_HextoBase64(t *testing.T) {
 	cases := []struct {
 		input, expected []byte
 	}{
@@ -32,7 +34,7 @@ func Test_Chalenge1_HextoBase64(t *testing.T) {
 	}
 }
 
-func Test_Chalenge2_FixedXOR(t *testing.T) {
+func Test_challenge2_FixedXOR(t *testing.T) {
 	challenge := struct {
 		input1HexEncoded, input2HexEncoded, expectedHexEncoded []byte
 	}{
@@ -86,25 +88,8 @@ func Test_Challenge3_SingleByteXORCipher(t *testing.T) {
 		t.Fatalf("Could not hex.decode, %s (%v)\n", challenge.inputHexEncoded, err)
 	}
 
-	result := struct {
-		msg        string
-		byteCipher byte
-		score      float32
-	}{}
-
-	for i := 0; i < 255; i++ {
-		b := byte(i)
-		dst := make([]byte, len(input))
-		SingleByteXOR(dst, input, b)
-		msg := string(dst[:])
-		score := scoreEnglishText(msg)
-		if score > result.score {
-			result.score = score
-			result.msg = msg
-			result.byteCipher = b
-		}
-	}
-	fmt.Printf("byte cipher = %v ; msg = %s\n", result.byteCipher, result.msg)
+	decodedMsg, byteCipher, _ := breakSingleByteXOR(input, scoreEnglishText)
+	fmt.Printf("byte cipher = %v ; msg = %s\n", byteCipher, decodedMsg)
 }
 
 func Test_Challenge4_DetectSingleCharacterXOR(t *testing.T) {
@@ -112,13 +97,11 @@ func Test_Challenge4_DetectSingleCharacterXOR(t *testing.T) {
 	if err != nil {
 		t.Fatal("Could not read the challenge data")
 	}
-	type result struct {
-		msg        string
-		byteCipher byte
-		score      float32
-	}
+	defer f.Close()
 
-	res := result{}
+	maxScore := float32(0)
+	var guessedMsgByteCipher byte
+	var guessedMsg []byte
 
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -127,21 +110,15 @@ func Test_Challenge4_DetectSingleCharacterXOR(t *testing.T) {
 		if err != nil {
 			t.Fatalf("could not decode, %s (%v)\n", scanner.Text(), err)
 		}
-		for i := 0; i < 255; i++ {
-			b := byte(i)
-			dst := make([]byte, len(input))
-			SingleByteXOR(dst, input, b)
-			msg := string(dst[:])
-			score := scoreEnglishText(msg)
-			if score > res.score {
-				res.score = score
-				res.msg = msg
-				res.byteCipher = b
-			}
+		decodedMsg, byteCipher, score := breakSingleByteXOR(input, scoreEnglishText)
+		if score > maxScore {
+			maxScore = score
+			guessedMsg = make([]byte, len(decodedMsg))
+			copy(guessedMsg, decodedMsg)
+			guessedMsgByteCipher = byteCipher
 		}
-
 	}
-	fmt.Printf("byte cipher = %v ; msg = %s\n", res.byteCipher, res.msg)
+	fmt.Printf("byte cipher = %v ; msg = %s\n", guessedMsgByteCipher, guessedMsg)
 }
 
 func Test_challenge5_ImplementRepeatingKeyXOR(t *testing.T) {
@@ -160,11 +137,61 @@ I go crazy when I hear a cymbal`),
 	}
 
 	dst := make([]byte, len(challenges.input))
-	repeatingKeyXOR(dst, challenges.input, key)
+	applyXORWithRepeatKey(dst, challenges.input, key)
 	fmt.Printf("got =\n  %s\n", dst)
 	fmt.Printf("expected =\n  %s\n", expected)
 	if bytes.Compare(dst, expected) != 0 {
 		t.Fatalf("got =\n  %s\nexpected =\n  %s\n", dst, expected)
 	}
 
+}
+
+func Test_Challenge6_BreakRepeatingKeyXOR(t *testing.T) {
+	t.Run("Test Hamming Distance", func(t *testing.T) {
+		expected := 37
+		got, err := hammingDistance(
+			[]byte("this is a test"),
+			[]byte("wokka wokka!!!"),
+		)
+		if err != nil {
+			t.Fatal("An error occured while calculating hamming distance", err)
+		}
+		if got != expected {
+			t.Fatalf("got = %d ; expected = %d", got, expected)
+		}
+	})
+	t.Run("Find key Size", func(t *testing.T) {
+		maxkeysize := 40
+		fileBytes, err := ioutil.ReadFile("data/challenge-data-6.txt")
+		if err != nil {
+			t.Fatal("Could not read the file", err)
+		}
+
+		msg := make([]byte, base64.StdEncoding.DecodedLen(len(fileBytes)))
+		n, err := base64.StdEncoding.Decode(msg, fileBytes)
+		if err != nil {
+			t.Fatal("Could not base64 decode", err)
+		}
+
+		// find the keysize
+		fmt.Println(maxkeysize, n)
+		keySize, err := findKeySize(msg, maxkeysize, hammingDistance)
+		if err != nil {
+			t.Fatal("could not find the keysize", err)
+		}
+		fmt.Println("keysize =", keySize)
+
+		// guess the key
+		blocks := getTranposedBlocks(msg, keySize)
+		fmt.Println("len(blocks) =", len(blocks))
+		key := make([]byte, keySize)
+		for i := range blocks {
+			_, byteCipher, _ := breakSingleByteXOR(blocks[i], scoreEnglishText)
+			key[i] = byteCipher
+		}
+		fmt.Printf("key =\n%s\n", key)
+		decodedMsg := make([]byte, len(msg))
+		applyXORWithRepeatKey(decodedMsg, msg, key)
+		fmt.Printf("decoded data =\n%s\n\n\n", decodedMsg)
+	})
 }

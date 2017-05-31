@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"math"
 )
 
 var (
@@ -51,6 +52,7 @@ func HexToBase64(src []byte) ([]byte, error) {
 
 }
 
+// XORBytes XOR 2  []bytes and returns the length of the result
 func XORBytes(dst, a, b []byte) int {
 	n := len(a)
 	if len(b) < n {
@@ -63,6 +65,7 @@ func XORBytes(dst, a, b []byte) int {
 	return n
 }
 
+// SingleByteXOR XOR a []byte against a single byte
 func SingleByteXOR(dst, a []byte, b byte) {
 	for i := 0; i < len(a); i++ {
 		dst[i] = a[i] ^ b
@@ -78,11 +81,126 @@ func scoreEnglishText(s string) float32 {
 	return score
 }
 
-func repeatingKeyXOR(dst, msg, key []byte) {
-	for i, b := range msg {
-		j := i % len(key)
-		dst[i] = b ^ key[j]
+// breakSingleByteXOR returns te decodedMsg and the guessed byte cypher.
+func breakSingleByteXOR(msg []byte, scoringFn func(s string) float32) ([]byte, byte, float32) {
+	var (
+		byteCipher byte
+		maxScore   float32
+	)
+	dst := make([]byte, len(msg))
+	decodedMsg := make([]byte, len(msg))
+
+	for i := 0; i < 255; i++ {
+		b := byte(i)
+		SingleByteXOR(dst, msg, b)
+		msg := string(dst[:])
+		score := scoreEnglishText(msg)
+		if score > maxScore {
+			maxScore = score
+			copy(decodedMsg, dst)
+			byteCipher = b
+		}
 	}
+	return decodedMsg, byteCipher, maxScore
+
+}
+
+func applyXORWithRepeatKey(dst, msg, key []byte) {
+	for i := range msg {
+		if msg[i] != 0 {
+			dst[i] = msg[i] ^ key[i%len(key)]
+		}
+	}
+}
+
+func hammingDistance(a, b []byte) (int, error) {
+	if len(a) != len(b) {
+		return 0, fmt.Errorf("Undefined for non equal length")
+	}
+	d := 0
+	for i := 0; i < len(a); i++ {
+		b := a[i] ^ b[i]
+		for b != 0 {
+			b &= b - 1
+			d++
+		}
+	}
+	return d, nil
+}
+
+// getBlocks returns a slice of `n` []byte of len `size` from the `msg`
+func getBlocks(msg []byte, size, n int) [][]byte {
+	blocks := make([][]byte, n)
+	for i := 0; i < n; i++ {
+		blocks[i] = make([]byte, size)
+		copy(blocks[i], msg[i*size:(i+1)*size])
+	}
+	return blocks
+}
+
+// getTranposedBlocks returns [][]byte composed tranposed blocks of keysize
+func getTranposedBlocks(msg []byte, size int) [][]byte {
+	blocks := make([][]byte, int(math.Ceil(float64(len(msg))/float64(size))))
+	for i := 0; i < len(blocks); i++ {
+		blocks[i] = make([]byte, size)
+		upTo := (i + 1) * size
+		if len(msg) < upTo {
+			upTo = len(msg)
+		}
+		copy(blocks[i], msg[i*size:upTo])
+	}
+	transposedBlocks := make([][]byte, size)
+	for i := 0; i < len(transposedBlocks); i++ {
+		transposedBlocks[i] = make([]byte, len(blocks))
+		for j := 0; j < len(blocks); j++ {
+			transposedBlocks[i][j] = blocks[j][i]
+		}
+	}
+	return transposedBlocks
+}
+
+// averageDistanceBlocks returns the normalize average disance between blocks
+func averageDistanceBlocks(blocks [][]byte, distanceFn func(a, b []byte) (int, error)) (float64, error) {
+	iteration := float64(0)
+	// all blocks have the same keysize
+	keySize := float64(len(blocks[0]))
+	average := float64(0)
+	for i := range blocks {
+		for j := 0; j < len(blocks); j++ {
+			if i != j {
+				d, err := distanceFn(blocks[i], blocks[j])
+				if err != nil {
+					return 0, err
+				}
+				average += float64(d) / keySize
+				iteration++
+			}
+		}
+	}
+	average = average / iteration
+	return average, nil
+}
+
+// findKeySize returns the guess size of the key
+func findKeySize(msg []byte, maxKeySize int, distanceFn func(a, b []byte) (int, error)) (int, error) {
+	numberOfBlocks := 4
+	// big number that should be replace on first iteration
+	minAverage := float64(1000000)
+	keysize := 0
+	for i := 2; i < maxKeySize; i++ {
+		blocks := getBlocks(msg, i, numberOfBlocks)
+		avg, err := averageDistanceBlocks(blocks, distanceFn)
+		if err != nil {
+			return 0, err
+		}
+		if minAverage > avg {
+			minAverage = avg
+			keysize = i
+		}
+
+	}
+	return keysize, nil
+
 }
 
 func main() {
