@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func Test_challenge1_HextoBase64(t *testing.T) {
+func Test_Challenge1_HextoBase64(t *testing.T) {
 	cases := []struct {
 		input, expected []byte
 	}{
@@ -34,7 +34,7 @@ func Test_challenge1_HextoBase64(t *testing.T) {
 	}
 }
 
-func Test_challenge2_FixedXOR(t *testing.T) {
+func Test_Challenge2_FixedXOR(t *testing.T) {
 	challenge := struct {
 		input1HexEncoded, input2HexEncoded, expectedHexEncoded []byte
 	}{
@@ -121,7 +121,7 @@ func Test_Challenge4_DetectSingleCharacterXOR(t *testing.T) {
 	fmt.Printf("byte cipher = %v ; msg = %s\n", guessedMsgByteCipher, guessedMsg)
 }
 
-func Test_challenge5_ImplementRepeatingKeyXOR(t *testing.T) {
+func Test_Challenge5_ImplementRepeatingKeyXOR(t *testing.T) {
 	challenges := struct {
 		input, expectedHexEncoded []byte
 	}{
@@ -189,7 +189,7 @@ func Test_Challenge6_BreakRepeatingKeyXOR(t *testing.T) {
 	})
 }
 
-func Test_Challenge7_BreakAESInECBMode(t *testing.T) {
+func Test_Challenge7_DecryptAESInECBMode(t *testing.T) {
 	key := []byte("YELLOW SUBMARINE")
 	encryptedMsg, err := base64DecodeFile("data/challenge-data-7.txt")
 	if err != nil {
@@ -216,7 +216,7 @@ func Test_Challenge7_BreakAESInECBMode(t *testing.T) {
 
 }
 
-func Test_challenge8_DetectAESInECBMode(t *testing.T) {
+func Test_Challenge8_DetectAESInECBMode(t *testing.T) {
 	f, err := os.Open("data/challenge-data-8.txt")
 	if err != nil {
 		t.Fatal("Could not read file", err)

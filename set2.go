@@ -5,8 +5,8 @@ import (
 	"fmt"
 )
 
-// PaddingPkcs7 return the slice with the appropriate padding
-func PaddingPkcs7(src []byte, blockSize int) ([]byte, error) {
+// Pkcs7Padding return the slice with the appropriate padding
+func Pkcs7Padding(src []byte, blockSize int) ([]byte, error) {
 	if blockSize < 1 {
 		return nil, fmt.Errorf("blockSize must be more than 1")
 	} else if blockSize > 255 {
