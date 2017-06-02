@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"crypto/aes"
+	"fmt"
 	"testing"
 )
 
@@ -25,5 +27,38 @@ func Test_Challenge9_ImplementPKCS7Padding(t *testing.T) {
 }
 
 func Test_Challenge10_ImplementCBCMode(t *testing.T) {
+	challenge := struct {
+		key, IV []byte
+	}{
+		key: []byte("YELLOW SUBMARINE"),
+		IV:  []byte("\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"),
+	}
+	msg, err := base64DecodeFile("data/challenge-data-10.txt")
+	if err != nil {
+		t.Fatal("Could base64 decode the file", err)
+	}
+	cipher, err := aes.NewCipher(challenge.key)
+	if err != nil {
+		t.Fatal("Could not create an aes cipher", err)
+	}
 
+	numberOfBlock := len(msg) / len(challenge.key)
+	fmt.Println("numberOfBlock", numberOfBlock)
+	npad := len(msg) % len(challenge.key)
+	if npad != 0 {
+		t.Fatal("Encrypted msg must be a factor of len(key)")
+	}
+
+	// decrypt
+	decryptedMsg := CBCDecrypter(msg, challenge.IV, cipher)
+
+	fmt.Printf("len(key) = %d ; len(IV) = %d ; len(msg) = %d\n", len(challenge.key), len(challenge.IV), len(msg))
+	fmt.Printf("%q\n", decryptedMsg)
+
+	// encrypt
+	encryptedMsg := CBCEncrypter(decryptedMsg, challenge.IV, cipher)
+	// Check equality with the original
+	if bytes.Compare(encryptedMsg, msg) != 0 {
+		t.Fatalf("got = \n%q\nexpected = \n%q\n", encryptedMsg, msg)
+	}
 }
