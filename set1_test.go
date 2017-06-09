@@ -195,25 +195,14 @@ func Test_Challenge7_DecryptAESInECBMode(t *testing.T) {
 	if err != nil {
 		t.Fatal("Could not read or base64 decode", err)
 	}
-	msg := make([]byte, len(encryptedMsg))
-	cipher, err := aes.NewCipher(key)
+	aesCipher, err := aes.NewCipher(key)
 	if err != nil {
 		t.Fatal("could not create the aes cipher")
 	}
 
-	// There is no ECB MODE implemented in the STD lib so doing it manually
-	fmt.Println("cipher.BlockSize() = ", cipher.BlockSize())
-	for i := 0; i < len(encryptedMsg); i += cipher.BlockSize() {
-		upTo := i + cipher.BlockSize()
-		if upTo > len(encryptedMsg) {
-			upTo = len(encryptedMsg)
-		}
-
-		cipher.Decrypt(msg[i:upTo], encryptedMsg[i:upTo])
-	}
+	decryptedMsg := ECBDecrypter(encryptedMsg, aesCipher)
 	fmt.Printf("key = %s\n", key)
-	fmt.Printf("Decoded mesage = \n%s\n\n", msg)
-
+	fmt.Printf("Decoded mesage = \n%s\n\n", decryptedMsg)
 }
 
 func Test_Challenge8_DetectAESInECBMode(t *testing.T) {

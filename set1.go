@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/cipher"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -214,6 +215,19 @@ func findKeySize(msg []byte, maxKeySize int, distanceFn func(a, b []byte) (int, 
 	}
 	return keysize, nil
 
+}
+
+// ECBDecrypter returns the decrypted message using ECB mode.
+func ECBDecrypter(msg []byte, c cipher.Block) []byte {
+	decryptedMsg := make([]byte, 0, len(msg))
+	var decryptedBlock []byte
+	blockSize := c.BlockSize()
+	for i := 0; i < len(msg)/blockSize; i++ {
+		decryptedBlock = decryptedMsg[i*blockSize : (i+1)*blockSize]
+		c.Decrypt(decryptedBlock, msg[i*blockSize:(i+1)*blockSize])
+		decryptedMsg = append(decryptedMsg, decryptedBlock...)
+	}
+	return decryptedMsg
 }
 
 func main() {
