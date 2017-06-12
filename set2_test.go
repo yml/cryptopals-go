@@ -62,3 +62,37 @@ func Test_Challenge10_ImplementCBCMode(t *testing.T) {
 		t.Fatalf("got = \n%q\nexpected = \n%q\n", encryptedMsg, msg)
 	}
 }
+
+func Test_Challenge11_EBC_CBC_DetectionOracle(t *testing.T) {
+	t.Run("Generate Random key", func(t *testing.T) {
+		keySize := 16
+		key, err := GenerateRandomBytes(keySize)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(key) != keySize {
+			t.Fatal("Generated key does not the right key size got = ", len(key), " expected = ", keySize)
+		}
+		k2, err := GenerateRandomBytes(keySize)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Equal(key, k2) == true {
+			t.Fatal("key are not random keys 1 =", key, " key2 =", k2)
+		}
+	})
+	t.Run("Encryption Oracle", func(t *testing.T) {
+		msg := make([]byte, 48)
+		encryptedMsg, err := encryptionOracle(msg)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// All the bytes in msg are identical compare 2 consequitive blocks and checks for equality. If equal they have been ecrypted with ECB.
+		if bytes.Equal(encryptedMsg[16:32], encryptedMsg[32:48]) {
+			fmt.Println("Guessed encryption mode: ECB")
+		} else {
+			fmt.Println("Guessed encryption mode: CBC")
+		}
+	})
+}

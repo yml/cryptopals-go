@@ -230,6 +230,19 @@ func ECBDecrypter(msg []byte, c cipher.Block) []byte {
 	return decryptedMsg
 }
 
+// ECBEncrypter returns the encrypted msg using ECB mode.
+func ECBEncrypter(msg []byte, c cipher.Block) []byte {
+	encryptedMsg := make([]byte, len(msg))
+	var encryptedBlock []byte
+	blockSize := c.BlockSize()
+	for i := 0; i < len(msg)/blockSize; i++ {
+		encryptedBlock = encryptedMsg[i*blockSize : (i+1)*blockSize]
+		c.Encrypt(encryptedBlock, msg[i*blockSize:(i+1)*blockSize])
+		encryptedMsg = append(encryptedMsg, encryptedBlock...)
+	}
+	return encryptedMsg
+}
+
 func main() {
 	fmt.Println("vim-go")
 }

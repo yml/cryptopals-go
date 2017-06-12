@@ -2,8 +2,12 @@ package main
 
 import (
 	"bytes"
+	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"fmt"
+	mrand "math/rand"
+	"time"
 )
 
 // Pkcs7Padding return the slice with the appropriate padding
@@ -59,4 +63,49 @@ func CBCEncrypter(msg, iv []byte, c cipher.Block) []byte {
 		}
 	}
 	return encryptedMsg
+}
+
+// GenerateRandomBytes returns a random key of the specified size
+func GenerateRandomBytes(size int) ([]byte, error) {
+	key := make([]byte, size)
+	if _, err := rand.Read(key); err != nil {
+		return nil, err
+	}
+	return key, nil
+}
+
+func encryptionOracle(msg []byte) ([]byte, error) {
+	mrand.Seed(time.Now().Unix())
+	// Generate random preffix and suffix
+	preffixCount := mrand.Intn(5)
+	suffixCount := mrand.Intn(5)
+
+	keySize := 16
+	rdm, err := GenerateRandomBytes((keySize * 2) + preffixCount + suffixCount)
+	if err != nil {
+		return nil, err
+	}
+	key := rdm[0:keySize]
+	iv := rdm[keySize : keySize*2]
+	preffix := rdm[keySize*2 : keySize*2+preffixCount]
+	suffix := rdm[keySize*2+preffixCount : keySize*2+preffixCount+suffixCount]
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	alteredMsg := make([]byte, 0, len(msg)+suffixCount+preffixCount)
+	alteredMsg = append(alteredMsg, preffix...)
+	alteredMsg = append(alteredMsg, msg...)
+	alteredMsg = append(alteredMsg, suffix...)
+	coin := mrand.Intn(2)
+	fmt.Println("coin =", coin)
+	var encryptedMsg []byte
+	if coin == 0 {
+		fmt.Println("CBC encryption")
+		encryptedMsg = CBCEncrypter(alteredMsg, iv, c)
+	} else {
+		fmt.Println("ECB encryption")
+		encryptedMsg = ECBEncrypter(alteredMsg, c)
+	}
+	return encryptedMsg, nil
 }
