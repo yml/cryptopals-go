@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/aes"
+	"encoding/base64"
 	"fmt"
 	"testing"
 )
@@ -88,11 +89,95 @@ func Test_Challenge11_EBC_CBC_DetectionOracle(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// All the bytes in msg are identical compare 2 consequitive blocks and checks for equality. If equal they have been ecrypted with ECB.
+		// All the bytes in msg are identical compare 2 consecutive blocks and checks for equality. If equal they have been encrypted with ECB.
 		if bytes.Equal(encryptedMsg[16:32], encryptedMsg[32:48]) {
 			fmt.Println("Guessed encryption mode: ECB")
 		} else {
 			fmt.Println("Guessed encryption mode: CBC")
+		}
+	})
+}
+
+func Test_Challenge12_ByteAtATimeECBDecryption(t *testing.T) {
+	base64Msg := []byte("Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK")
+	key := []byte("YELLOW SUBMARINE")
+	var guessedBlockSize int
+
+	plainMsg := make([]byte, base64.StdEncoding.DecodedLen(len(base64Msg)))
+	_, err := base64.StdEncoding.Decode(plainMsg, base64Msg)
+	if err != nil {
+		t.Fatal("Could not decode base64Msg", err)
+	}
+
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		t.Fatal("Could not create the aes cipher block")
+	}
+	t.Run("Find ECB block size", func(t *testing.T) {
+		blockSize, err := findECBBlockSize(plainMsg, c)
+		if err != nil {
+			t.Fatal("Could not find ECB block Size", err)
+		}
+		if len(key) != blockSize {
+			t.Fatalf("Wrong block size expected = %d ; got = %d", len(key), blockSize)
+		}
+		fmt.Println("ECB block size =", blockSize)
+		guessedBlockSize = blockSize
+	})
+	t.Run("Detect that we are using ECB", func(t *testing.T) {
+		fmt.Println("guessedBlockSize =", guessedBlockSize)
+		msg := make([]byte, 3*guessedBlockSize)
+		ok, err := isECBEncrypted(msg, c)
+		if err != nil {
+			t.Fatal("An error occured while running isECBEncrypted ", err)
+		}
+		if !ok {
+			t.Fatal("msg is encrypted using and aes cipher in ECB mode by construction")
+		}
+		fmt.Println("By construction we are using an aes cipher in ECB mode")
+
+	})
+	t.Run("findingLastBytes", func(t *testing.T) {
+		// Build a rainbow map of all the possible value for the last byte
+		paddedPlainMsg, err := Pkcs7Padding(plainMsg, guessedBlockSize)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		prefix := bytes.Repeat([]byte("A"), guessedBlockSize)
+		guessedMsg := make([]byte, 0, len(paddedPlainMsg))
+		guessed := make([]byte, 0, guessedBlockSize)
+		fmt.Println("len(prefix) =", len(prefix))
+		fmt.Println("len(paddedPlainMsg) =", len(paddedPlainMsg))
+		for j := 0; j < len(paddedPlainMsg); j += guessedBlockSize {
+			guessed = guessed[0:0]
+			for i := 1; i < guessedBlockSize+1; i++ {
+				rainbow, err := buildRainbow(prefix[0:guessedBlockSize-i], guessed, key, paddedPlainMsg[j:])
+				if err != nil {
+					t.Fatal("Could not build rainbow table", err)
+				}
+				// Going to guess the last byte of the block with the previously calculated rainbow map
+				msg := make([]byte, 0, guessedBlockSize-i+len(paddedPlainMsg))
+				msg = append(msg, prefix[0:guessedBlockSize-i]...)
+				msg = append(msg, paddedPlainMsg[j:]...)
+				encryptedMsg, err := oracleAesECB(msg, key)
+				if err != nil {
+					t.Fatal("An error occured while running the oracle", err)
+				}
+				key := fmt.Sprintf("%s", encryptedMsg[0:guessedBlockSize])
+
+				v, ok := rainbow[key]
+				if !ok {
+					fmt.Println("value not found in rainbow", fmt.Sprintf("%q", encryptedMsg[0:len(prefix)]), v)
+				} else {
+					guessed = append(guessed, v...)
+				}
+			}
+			guessedMsg = append(guessedMsg, guessed...)
+		}
+		fmt.Printf("guessedMsg = %s\n", guessedMsg)
+		if !bytes.Equal(paddedPlainMsg, guessedMsg) {
+			t.Fatalf("got = \n%q\n ; expected = \n%q\n", guessedMsg, paddedPlainMsg)
 		}
 	})
 }
