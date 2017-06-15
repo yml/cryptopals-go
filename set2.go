@@ -7,11 +7,14 @@ import (
 	"crypto/rand"
 	"fmt"
 	mrand "math/rand"
+	"strings"
 	"time"
 )
 
-// Pkcs7Padding return the slice with the appropriate padding
-func Pkcs7Padding(src []byte, blockSize int) ([]byte, error) {
+// Pkcs7Pad right-pads the given byte slice with 1 to n bytes, where
+// n is the block size. The size of the result is x times n, where x
+// is at least 1.
+func Pkcs7Pad(src []byte, blockSize int) ([]byte, error) {
 	if blockSize < 1 {
 		return nil, fmt.Errorf("blockSize must be more than 1")
 	} else if blockSize > 255 {
@@ -23,6 +26,12 @@ func Pkcs7Padding(src []byte, blockSize int) ([]byte, error) {
 		src = append(src, bytes.Repeat([]byte{byte(npad)}, npad)...)
 	}
 	return src, nil
+}
+
+// Pkcs7Unpad remove the padding
+func Pkcs7Unpad(msg []byte) []byte {
+	fmt.Println("padded = ", int(msg[len(msg)-1]))
+	return msg[:len(msg)-int(msg[len(msg)-1])]
 }
 
 //CBCDecrypter returns the decrypted message using the CBC mode
@@ -153,7 +162,7 @@ func oracleAesECB(msg, key []byte) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	msg, err = Pkcs7Padding(msg, c.BlockSize())
+	msg, err = Pkcs7Pad(msg, c.BlockSize())
 	if err != nil {
 		return nil, err
 	}
@@ -178,4 +187,69 @@ func buildRainbow(prefix, guessed, key, plainMsg []byte) (map[string][]byte, err
 	}
 
 	return rainbow, nil
+}
+
+// Profile representation
+type Profile struct {
+	Email, UID, Role string
+}
+
+// NewProfile creates a profile from an email
+func NewProfile(email string) Profile {
+	email = strings.Replace(email, "=", "", -1)
+	email = strings.Replace(email, "&", "", -1)
+
+	p := Profile{
+		Email: email,
+		UID:   "10",
+		Role:  "user"}
+	return p
+}
+
+// Encode serialize the a profile
+func (p *Profile) Encode() string {
+	return fmt.Sprintf("email=%s&uid=%s&role=%s", p.Email, p.UID, p.Role)
+}
+
+// AESEncrypt the serialize profile
+func (p *Profile) AESEncrypt(key []byte) ([]byte, error) {
+	msg := []byte(p.Encode())
+
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+	paddedMsg, err := Pkcs7Pad(msg, c.BlockSize())
+	if err != nil {
+		return nil, err
+	}
+	encryptedMsg := ECBEncrypter(paddedMsg, c)
+	return encryptedMsg, nil
+}
+
+// NewProfileFromEncrypted creates a profile from its encrypted serialize function
+func NewProfileFromEncrypted(msg, key []byte) (Profile, error) {
+	c, err := aes.NewCipher(key)
+	if err != nil {
+		return Profile{}, err
+	}
+
+	decryptedMsg := ECBDecrypter(msg, c)
+	decryptedMsg = Pkcs7Unpad(decryptedMsg)
+	p := Profile{}
+	for _, kv := range bytes.Split(decryptedMsg, []byte("&")) {
+		kvs := bytes.Split(kv, []byte("="))
+		k := kvs[0]
+		v := kvs[1]
+		if bytes.Equal([]byte("email"), k) {
+			p.Email = string(v)
+		} else if bytes.Equal([]byte("role"), k) {
+			p.Role = string(v)
+		} else if bytes.Equal([]byte("uid"), k) {
+			p.UID = string(v)
+		} else {
+			return p, fmt.Errorf("Unexpected key")
+		}
+	}
+	return p, nil
 }

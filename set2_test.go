@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"fmt"
 	"testing"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 func Test_Challenge9_ImplementPKCS7Padding(t *testing.T) {
@@ -18,7 +20,7 @@ func Test_Challenge9_ImplementPKCS7Padding(t *testing.T) {
 		blockSize:         20,
 	}
 
-	got, err := Pkcs7Padding(challenge.input, challenge.blockSize)
+	got, err := Pkcs7Pad(challenge.input, challenge.blockSize)
 	if err != nil {
 		t.Fatal("An error occured while pkcs8 padding src ", err)
 	}
@@ -139,7 +141,7 @@ func Test_Challenge12_ByteAtATimeECBDecryption(t *testing.T) {
 	})
 	t.Run("findingLastBytes", func(t *testing.T) {
 		// Build a rainbow map of all the possible value for the last byte
-		paddedPlainMsg, err := Pkcs7Padding(plainMsg, guessedBlockSize)
+		paddedPlainMsg, err := Pkcs7Pad(plainMsg, guessedBlockSize)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -179,5 +181,94 @@ func Test_Challenge12_ByteAtATimeECBDecryption(t *testing.T) {
 		if !bytes.Equal(paddedPlainMsg, guessedMsg) {
 			t.Fatalf("got = \n%q\n ; expected = \n%q\n", guessedMsg, paddedPlainMsg)
 		}
+	})
+}
+
+func Test_Challenge13_ECBCutAndPaste(t *testing.T) {
+	challenge := struct {
+		email                     string
+		expectedSerializedProfile string
+		expectedProfile           Profile
+	}{
+		email: "foo@bar.com",
+		expectedSerializedProfile: "email=foo@bar.com&uid=10&role=user",
+		expectedProfile: Profile{
+			Email: "foo@bar.com",
+			UID:   "10",
+			Role:  "user",
+		},
+	}
+	profile := NewProfile(challenge.email)
+	t.Run("Profile Creation", func(t *testing.T) {
+		if profile.Email != challenge.expectedProfile.Email ||
+			profile.UID != challenge.expectedProfile.UID ||
+			profile.Role != challenge.expectedProfile.Role {
+			t.Fatal("New profile does not match expectation:", profile.Email, profile.UID, profile.Role)
+		}
+	})
+	t.Run("Profile encoding", func(t *testing.T) {
+		if profile.Encode() != challenge.expectedSerializedProfile {
+			t.Fatal("Serialize profile do not match", profile.Encode(), "!=", challenge.expectedSerializedProfile)
+
+		}
+	})
+	t.Run("Drop special char", func(t *testing.T) {
+		if p := NewProfile("foo@bar.com&role=admin"); p.Email != "foo@bar.comroleadmin" {
+			t.Fatal("new profile is not sanitized", p.Email)
+		}
+	})
+	t.Run("AES encrypt", func(t *testing.T) {
+		key := []byte("YELLOW SUBMARINE")
+		fmt.Println("profile.Encode() = ", profile.Encode())
+		encryptedProfile, err := profile.AESEncrypt(key)
+		if err != nil {
+			t.Fatal("Could not encrypt profile", err)
+		}
+		decryptedProfile, err := NewProfileFromEncrypted(encryptedProfile, key)
+		if err != nil {
+			t.Fatal("Could not create a profile from its encrypted representation:", err)
+		}
+
+		spew.Dump(decryptedProfile)
+	})
+	t.Run("craft a profile with admin", func(t *testing.T) {
+		key := []byte("YELLOW SUBMARINE")
+		fmt.Println("len('email=foo@bar.com&uid=10&role=user') =", len("email=foo@bar.com&uid=10&role=user"))
+		fmt.Println("len('email=') =", len("email="))
+		fmt.Println("len('email=foo@bar.co') = ", len("email=foo@bar.co"))
+		// cut corner but in reality we should first guess the key size
+		forgePaddedBlock, err := Pkcs7Pad([]byte("admin"), len(key))
+		if err != nil {
+			t.Fatal("Could not padd my generated bock:", err)
+		}
+		// the goal here is to craft an encrypted block in the form of `admin + >pkcs7 padding>`
+		email := []byte("foo@bar.co")
+		email = append(email, forgePaddedBlock...)
+		profile := NewProfile(string(email))
+		encryptedProfile1, err := (&profile).AESEncrypt(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		encryptedForgedBlock := []byte(encryptedProfile1)[16:32]
+
+		// craft and encrypted profile with an email such as the value for the role key is in its own block
+		fmt.Println("len('email=foo@baaar.com&uid=10&role=') = ", len("email=foo@baaar.com&uid=10&role="))
+		userProfile := NewProfile("foo@baaar.com")
+		encryptedAdmin, err := (&userProfile).AESEncrypt(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		encryptedAdmin = append(encryptedAdmin[0:32], encryptedForgedBlock...)
+		adminProfile, err := NewProfileFromEncrypted(encryptedAdmin, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if adminProfile.Role != "admin" {
+			t.Fatal("Fail to crack the password")
+		}
+		fmt.Println("Created a role admin profile!!!!")
+		spew.Dump(adminProfile)
 	})
 }
